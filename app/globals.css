@@ -146,6 +146,10 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
+  /* Text size tokens */
+  --text-4xl: 3.25rem;
+  --text-4xl--line-height: 2.5rem;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -311,6 +315,15 @@
   & h6 {
     @apply text-xs font-medium mt-3 mb-1;
   }
+
+  /* Paragraph spacing for compact prose */
+  & p {
+    @apply mb-2;
+  }
+
+  & p:last-child {
+    @apply mb-0;
+  }
 }
 
 @utility prose-neutral {
@@ -340,6 +353,17 @@
   }
 }
 
+
+
+@utility font-jaro {
+  font-family: 'Jaro', var(--font-sans), system-ui, sans-serif;
+}
+
+@utility font-odibee {
+  font-family: 'Odibee Sans', var(--font-sans), system-ui, sans-serif;
+  font-weight: 400;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -348,3 +372,16 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+@layer utilities {
+    .text-2xs {
+      font-size: 0.625rem;
+      line-height: 0.75rem;
+    }
+    
+    .text-3xs {
+      font-size: 0.5rem;
+      line-height: 0.625rem;
+    }
+  }

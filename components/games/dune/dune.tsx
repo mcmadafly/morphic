@@ -14,17 +14,13 @@ import {
     isToolCallPart,
     isToolTypePart
 } from '@/lib/types/dynamic-tools'
-import { Model } from '@/lib/types/models'
 import { cn } from '@/lib/utils'
 
-import { useAuthCheck } from '@/hooks/use-auth-check'
 import { useFileDropzone } from '@/hooks/use-file-dropzone'
 
-import { AuthModal } from './auth-modal'
-import { ChatMessages } from './chat-messages'
-import { ChatPanel } from './chat-panel'
-import { DragOverlay } from './drag-overlay'
-import { ErrorModal } from './error-modal'
+import { ChatMessages } from '@/components/chat-messages'
+import { ChatPanel } from '@/components/chat-panel'
+import { DragOverlay } from '@/components/drag-overlay'
 
 // Define section structure
 interface ChatSection {
@@ -33,34 +29,19 @@ interface ChatSection {
     assistantMessages: UIMessage[]
 }
 
-export function Chat({
+export function DuneChat({
     id,
     savedMessages = [],
-    query,
-    models
+    query
 }: {
     id: string
     savedMessages?: UIMessage[]
     query?: string
-    models?: Model[]
 }) {
-    console.log('models', models)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
     const [isAtBottom, setIsAtBottom] = useState(true)
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
     const [input, setInput] = useState('')
-    const [showAuthModal, setShowAuthModal] = useState(false)
-    const [errorModal, setErrorModal] = useState<{
-        open: boolean
-        type: 'rate-limit' | 'auth' | 'forbidden' | 'general'
-        message: string
-        details?: string
-    }>({
-        open: false,
-        type: 'general',
-        message: ''
-    })
-    const { isAuthenticated } = useAuthCheck()
 
     const {
         messages,
@@ -76,27 +57,34 @@ export function Chat({
         transport: new DefaultChatTransport({
             api: '/api/chat',
             prepareSendMessagesRequest: ({ messages, trigger, messageId }) => {
-                // Simplify by passing AI SDK's default trigger values directly
-                const lastMessage = messages[messages.length - 1]
-                const messageToRegenerate =
-                    trigger === 'regenerate-message'
-                        ? messages.find(m => m.id === messageId)
-                        : undefined
+                switch (trigger) {
+                    case 'regenerate-message':
+                        // Find the message being regenerated
+                        const messageToRegenerate = messages.find(m => m.id === messageId)
+                        return {
+                            body: {
+                                trigger: 'regenerate-assistant-message',
+                                chatId: id,
+                                messageId,
+                                // Include the message if it's a user message (for edit cases)
+                                message:
+                                    messageToRegenerate?.role === 'user'
+                                        ? messageToRegenerate
+                                        : undefined
+                            }
+                        }
 
-                return {
-                    body: {
-                        trigger, // Use AI SDK's default trigger value directly
-                        chatId: id,
-                        messageId,
-                        message:
-                            trigger === 'regenerate-message' &&
-                                messageToRegenerate?.role === 'user'
-                                ? messageToRegenerate
-                                : trigger === 'submit-message'
-                                    ? lastMessage
-                                    : undefined,
-                        isNewChat: trigger === 'submit-message' && messages.length === 1
-                    }
+                    case 'submit-message':
+                    default:
+                        // Only send the last message
+                        return {
+                            body: {
+                                trigger: 'submit-user-message',
+                                chatId: id,
+                                message: messages[messages.length - 1],
+                                messageId
+                            }
+                        }
                 }
             }
         }),
@@ -105,43 +93,7 @@ export function Chat({
             window.dispatchEvent(new CustomEvent('chat-history-updated'))
         },
         onError: error => {
-            // Handle rate limiting errors from Vercel WAF
-            // Check for status codes in error message or specific rate limit indicators
-            const errorMessage = error.message?.toLowerCase() || ''
-            const isRateLimit =
-                error.message?.includes('429') ||
-                errorMessage.includes('rate limit') ||
-                errorMessage.includes('too many requests')
-
-            if (isRateLimit) {
-                setErrorModal({
-                    open: true,
-                    type: 'rate-limit',
-                    message: error.message,
-                    details: undefined
-                })
-            } else if (
-                error.message?.includes('401') ||
-                errorMessage.includes('unauthorized')
-            ) {
-                setErrorModal({
-                    open: true,
-                    type: 'auth',
-                    message: error.message
-                })
-            } else if (
-                error.message?.includes('403') ||
-                errorMessage.includes('forbidden')
-            ) {
-                setErrorModal({
-                    open: true,
-                    type: 'forbidden',
-                    message: error.message
-                })
-            } else {
-                // For general errors, still use toast for less intrusive notification
-                toast.error(`Error in chat: ${error.message}`)
-            }
+            toast.error(`Error in chat: ${error.message}`)
         },
         experimental_throttle: 100,
         generateId
@@ -285,12 +237,6 @@ export function Chat({
     const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
 
-        // Check authentication before sending message
-        if (!isAuthenticated) {
-            setShowAuthModal(true)
-            return
-        }
-
         const uploaded = uploadedFiles.filter(f => f.status === 'uploaded')
 
         if (input.trim() || uploaded.length > 0) {
@@ -329,103 +275,90 @@ export function Chat({
         })
 
     return (
-        <div
-            className={cn(
-                'relative flex h-full min-w-0 flex-1 flex-col',
-                messages.length === 0 ? 'items-center justify-center' : ''
-            )}
-            data-testid="full-chat"
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-        >
-            <ChatMessages
-                sections={sections}
-                onQuerySelect={onQuerySelect}
-                status={status}
-                chatId={id}
-                addToolResult={({
-                    toolCallId,
-                    result
-                }: {
-                    toolCallId: string
-                    result: any
-                }) => {
-                    // Find the tool name from the message parts
-                    let toolName = 'unknown'
+        <>
+            <div className="w-full ">
+                <img
+                    src="/images/games/dune/dune-logo.png"
+                    alt="Dune"
+                    className="relative max-w-md mx-auto my-10"
+                />
+            </div>
+            <div
+                className={cn(
+                    'relative flex min-w-0 flex-1 flex-col',
+                    messages.length === 0 ? 'items-center justify-center' : ''
+                )}
+                data-testid="full-chat"
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+            >
 
-                    // Optimize by breaking early once found
-                    outerLoop: for (const message of messages) {
-                        if (!message.parts) continue
+                <ChatMessages
+                    sections={sections}
+                    onQuerySelect={onQuerySelect}
+                    status={status}
+                    chatId={id}
+                    addToolResult={({
+                        toolCallId,
+                        result
+                    }: {
+                        toolCallId: string
+                        result: any
+                    }) => {
+                        // Find the tool name from the message parts
+                        let toolName = 'unknown'
 
-                        for (const part of message.parts) {
-                            if (isToolCallPart(part) && part.toolCallId === toolCallId) {
-                                toolName = part.toolName
-                                break outerLoop
-                            } else if (
-                                isToolTypePart(part) &&
-                                part.toolCallId === toolCallId
-                            ) {
-                                toolName = part.type.substring(5) // Remove 'tool-' prefix
-                                break outerLoop
-                            } else if (
-                                isDynamicToolPart(part) &&
-                                part.toolCallId === toolCallId
-                            ) {
-                                toolName = part.toolName
-                                break outerLoop
-                            }
-                        }
-                    }
+                        // Optimize by breaking early once found
+                        outerLoop: for (const message of messages) {
+                            if (!message.parts) continue
 
-                    addToolResult({ tool: toolName, toolCallId, output: result })
-                }}
-                scrollContainerRef={scrollContainerRef}
-                onUpdateMessage={handleUpdateAndReloadMessage}
-                reload={handleReloadFrom}
-                error={error}
-            />
-            <ChatPanel
-                chatId={id}
-                input={input}
-                handleInputChange={handleInputChange}
-                handleSubmit={onSubmit}
-                status={status}
-                messages={messages}
-                setMessages={setMessages}
-                stop={stop}
-                query={query}
-                append={(message: any) => {
-                    sendMessage(message)
-                }}
-                models={models}
-                showScrollToBottomButton={!isAtBottom}
-                uploadedFiles={uploadedFiles}
-                setUploadedFiles={setUploadedFiles}
-                scrollContainerRef={scrollContainerRef}
-            />
-            <DragOverlay visible={isDragging} />
-            <AuthModal open={showAuthModal} onOpenChange={setShowAuthModal} />
-            <ErrorModal
-                open={errorModal.open}
-                onOpenChange={open => setErrorModal(prev => ({ ...prev, open }))}
-                error={errorModal}
-                onRetry={
-                    errorModal.type !== 'rate-limit'
-                        ? () => {
-                            // Retry the last message if not rate limited
-                            if (messages.length > 0) {
-                                const lastUserMessage = messages
-                                    .filter(m => m.role === 'user')
-                                    .pop()
-                                if (lastUserMessage) {
-                                    sendMessage(lastUserMessage)
+                            for (const part of message.parts) {
+                                if (isToolCallPart(part) && part.toolCallId === toolCallId) {
+                                    toolName = part.toolName
+                                    break outerLoop
+                                } else if (
+                                    isToolTypePart(part) &&
+                                    part.toolCallId === toolCallId
+                                ) {
+                                    toolName = part.type.substring(5) // Remove 'tool-' prefix
+                                    break outerLoop
+                                } else if (
+                                    isDynamicToolPart(part) &&
+                                    part.toolCallId === toolCallId
+                                ) {
+                                    toolName = part.toolName
+                                    break outerLoop
                                 }
                             }
                         }
-                        : undefined
-                }
-            />
-        </div>
+
+                        addToolResult({ tool: toolName, toolCallId, output: result })
+                    }}
+                    scrollContainerRef={scrollContainerRef}
+                    onUpdateMessage={handleUpdateAndReloadMessage}
+                    reload={handleReloadFrom}
+                    error={error}
+                />
+                <ChatPanel
+                    chatId={id}
+                    input={input}
+                    handleInputChange={handleInputChange}
+                    handleSubmit={onSubmit}
+                    status={status}
+                    messages={messages}
+                    setMessages={setMessages}
+                    stop={stop}
+                    append={(message: any) => {
+                        sendMessage(message)
+                    }}
+                    showScrollToBottomButton={!isAtBottom}
+                    uploadedFiles={uploadedFiles}
+                    setUploadedFiles={setUploadedFiles}
+                    scrollContainerRef={scrollContainerRef}
+                />
+                <DragOverlay visible={isDragging} />
+            </div>
+        </>
     )
 }

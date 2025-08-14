@@ -11,40 +11,40 @@ import { Chat } from '@/components/chat'
 export const maxDuration = 60
 
 export async function generateMetadata(props: {
-  params: Promise<{ id: string }>
+    params: Promise<{ id: string }>
 }) {
-  const { id } = await props.params
-  const userId = await getCurrentUserId()
+    const { id } = await props.params
+    const userId = await getCurrentUserId()
 
-  const chat = await loadChat(id, userId)
+    const chat = await loadChat(id, userId)
 
-  if (!chat) {
-    return { title: 'Search' }
-  }
+    if (!chat) {
+        return { title: 'Search' }
+    }
 
-  return {
-    title: chat.title.toString().slice(0, 50) || 'Search'
-  }
+    return {
+        title: chat.title.toString().slice(0, 50) || 'Search'
+    }
 }
 
 export default async function SearchPage(props: {
-  params: Promise<{ id: string }>
+    params: Promise<{ id: string }>
 }) {
-  const { id } = await props.params
-  const userId = await getCurrentUserId()
+    const { id } = await props.params
+    const userId = await getCurrentUserId()
 
-  const chat = await loadChat(id, userId)
+    const chat = await loadChat(id, userId)
 
-  if (!chat) {
-    notFound()
-  }
+    if (!chat) {
+        notFound()
+    }
 
-  if (chat.visibility === 'private' && !userId) {
-    redirect('/auth/login')
-  }
+    if (chat.visibility === 'private' && !userId) {
+        redirect('/auth/login')
+    }
 
-  const messages: UIMessage[] = chat.messages
+    const messages: UIMessage[] = chat.messages
 
-  const models = await getModels()
-  return <Chat id={id} savedMessages={messages} models={models} />
+    const models = await getModels()
+    return <Chat id={id} savedMessages={messages} />
 }

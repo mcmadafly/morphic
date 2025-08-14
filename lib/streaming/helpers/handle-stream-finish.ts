@@ -13,92 +13,92 @@ import type { StreamContext } from './types'
 const DEFAULT_CHAT_TITLE = 'Untitled'
 
 export async function handleStreamFinish(
-  writer: UIMessageStreamWriter,
-  responseMessage: UIMessage,
-  messagesToModel: UIMessage[],
-  context: StreamContext,
-  titlePromise?: Promise<string>
+    writer: UIMessageStreamWriter,
+    responseMessage: UIMessage,
+    messagesToModel: UIMessage[],
+    context: StreamContext,
+    titlePromise?: Promise<string>
 ) {
-  const { chatId, userId, modelId, abortSignal, parentTraceId } = context
+    const { chatId, userId, modelId, abortSignal, parentTraceId } = context
 
-  // Attach metadata to the response message if we have a traceId
-  if (parentTraceId) {
-    responseMessage.metadata = {
-      ...(responseMessage.metadata || {}),
-      traceId: parentTraceId
-    }
-  }
-
-  // Generate related questions if there are tool calls
-  if (hasToolCalls(responseMessage as UIMessage | null)) {
-    const questionPartId = generateId()
-
-    try {
-      writer.write({
-        type: 'data-relatedQuestions',
-        id: questionPartId,
-        data: { status: 'loading' }
-      })
-
-      const relatedQuestions = await generateRelatedQuestions(
-        modelId,
-        [...messagesToModel, responseMessage],
-        abortSignal,
-        parentTraceId
-      )
-
-      responseMessage.parts.push({
-        type: 'data-relatedQuestions',
-        id: questionPartId,
-        data: {
-          status: 'success',
-          questions: relatedQuestions.questions
+    // Attach metadata to the response message if we have a traceId
+    if (parentTraceId) {
+        responseMessage.metadata = {
+            ...(responseMessage.metadata || {}),
+            traceId: parentTraceId
         }
-      })
-
-      writer.write({
-        type: 'data-relatedQuestions',
-        id: questionPartId,
-        data: {
-          status: 'success',
-          questions: relatedQuestions.questions
-        }
-      })
-    } catch (error) {
-      console.error('Error generating related questions:', error)
-      writer.write({
-        type: 'data-relatedQuestions',
-        id: questionPartId,
-        data: { status: 'error' }
-      })
     }
-  }
 
-  // Wait for title generation if it was started
-  const chatTitle = titlePromise ? await titlePromise : undefined
+    // Generate related questions if there are tool calls
+    if (hasToolCalls(responseMessage as UIMessage | null)) {
+        const questionPartId = generateId()
 
-  // Save message with retry logic
-  const saveStart = performance.now()
-  upsertMessage(chatId, responseMessage, userId)
-    .then(() => {
-      perfTime('upsertMessage (AI response) completed', saveStart)
-    })
-    .catch(async error => {
-      console.error('Error saving message:', error)
-      try {
-        await retryDatabaseOperation(
-          () => upsertMessage(chatId, responseMessage, userId),
-          'save message'
+        try {
+            writer.write({
+                type: 'data-relatedQuestions',
+                id: questionPartId,
+                data: { status: 'loading' }
+            })
+
+            const relatedQuestions = await generateRelatedQuestions(
+                modelId,
+                [...messagesToModel, responseMessage],
+                abortSignal,
+                parentTraceId
+            )
+
+            responseMessage.parts.push({
+                type: 'data-relatedQuestions',
+                id: questionPartId,
+                data: {
+                    status: 'success',
+                    questions: relatedQuestions.questions
+                }
+            })
+
+            writer.write({
+                type: 'data-relatedQuestions',
+                id: questionPartId,
+                data: {
+                    status: 'success',
+                    questions: relatedQuestions.questions
+                }
+            })
+        } catch (error) {
+            console.error('Error generating related questions:', error)
+            writer.write({
+                type: 'data-relatedQuestions',
+                id: questionPartId,
+                data: { status: 'error' }
+            })
+        }
+    }
+
+    // Wait for title generation if it was started
+    const chatTitle = titlePromise ? await titlePromise : undefined
+
+    // Save message with retry logic
+    const saveStart = performance.now()
+    upsertMessage(chatId, responseMessage, userId)
+        .then(() => {
+            perfTime('upsertMessage (AI response) completed', saveStart)
+        })
+        .catch(async error => {
+            console.error('Error saving message:', error)
+            try {
+                await retryDatabaseOperation(
+                    () => upsertMessage(chatId, responseMessage, userId),
+                    'save message'
+                )
+            } catch (retryError) {
+                console.error('Failed to save after retries:', retryError)
+            }
+        })
+
+    // Update title after message is saved
+    if (chatTitle && chatTitle !== DEFAULT_CHAT_TITLE) {
+        updateChatTitle(chatId, chatTitle).catch(error =>
+            console.error('Error updating title:', error)
         )
-      } catch (retryError) {
-        console.error('Failed to save after retries:', retryError)
-      }
-    })
-
-  // Update title after message is saved
-  if (chatTitle && chatTitle !== DEFAULT_CHAT_TITLE) {
-    updateChatTitle(chatId, chatTitle).catch(error =>
-      console.error('Error updating title:', error)
-    )
-  }
+    }
 }
